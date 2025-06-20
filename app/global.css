@@ -1,0 +1,43 @@
+/* app/globals.css */
+
+/* Načtení základních stylů, komponent a utilit Tailwind CSS */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definice globálních stylů a proměnných v "base" vrstvě */
+@layer base {
+  :root {
+    /* Definice barevné palety jako CSS proměnných (volitelné, ale užitečné) */
+    --background: 0 0% 100%; /* Bílá */
+    --foreground: 222.2 84% 4.9%; /* Téměř černá */
+    --muted: 210 40% 96.1%; /* Světle šedá */
+    --muted-foreground: 215.4 16.3% 46.9%; /* Tmavě šedá */
+    --primary: 243.8 95.8% 53.1%; /* Akcentní modrá (indigo) */
+    --primary-foreground: 210 40% 98%; /* Bílá pro text na primární barvě */
+    --border: 214.3 31.8% 91.4%; /* Světle šedý okraj */
+  }
+
+  /* Styly pro tmavý režim (pokud ho plánujete) */
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --primary: 243.8 95.8% 53.1%;
+    --primary-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+  }
+
+  /* Globální styly aplikované na celou stránku */
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased; /* Vyhlazování písma pro Chrome/Safari */
+    -moz-osx-font-smoothing: grayscale; /* Vyhlazování písma pro Firefox */
+  }
+
+  /* Základní styl pro nadpisy */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold tracking-tight; /* Mírně zúží mezery mezi písmeny pro kompaktnější vzhled */
+  }
+}

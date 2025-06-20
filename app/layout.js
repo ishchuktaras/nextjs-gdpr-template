@@ -1,18 +1,22 @@
 // app/layout.js
-import { CookieConsent, GDPRProvider } from '../components/gdpr';
-// nebo: import { CookieConsent, GDPRProvider } from '@webnamiru/nextjs-gdpr';
+import { Inter } from 'next/font/google';
+import '../app/global.css';
+import { GDPRProvider, CookieConsent } from '../components/gdpr';
+
+// Nastavení fontu
+const inter = Inter({ subsets: ['latin'] });
+
+export const metadata = {
+  title: 'GDPR Ready App',
+  description: 'Moderní aplikace s GDPR řešením',
+};
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="cs">
+    // Použití fontu na celou aplikaci
+    <html lang="cs" className={inter.className}>
       <body>
-        <GDPRProvider 
-          config={{
-            locale: 'cs',
-            theme: 'modern',
-            autoShow: true
-          }}
-        >
+        <GDPRProvider>
           {children}
           <CookieConsent />
         </GDPRProvider>
