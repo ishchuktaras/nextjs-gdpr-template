@@ -1,0 +1,11 @@
+// pages/_app.js
+import { CookieConsent, GDPRProvider } from '../components/gdpr';
+
+export default function App({ Component, pageProps }) {
+  return (
+    <GDPRProvider>
+      <Component {...pageProps} />
+      <CookieConsent />
+    </GDPRProvider>
+  );
+}

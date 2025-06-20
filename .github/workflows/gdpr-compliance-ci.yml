@@ -1,0 +1,553 @@
+# .github/workflows/gdpr-compliance-ci.yml
+# 🔐 GDPR Compliance CI Workflow pro webnamiru.site
+# Automatizuje kontroly GDPR compliance při každém push/PR
+
+name: 🔐 GDPR Compliance Check
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Spouští se každý týden v pondělí ve 2:00 UTC
+    - cron: '0 2 * * 1'
+  workflow_dispatch: # Umožňuje manuální spuštění
+
+env:
+  NODE_VERSION: '18'
+  GDPR_SCAN_VERSION: 'latest'
+
+jobs:
+  # 🔍 Job 1: Skenování citlivých dat v kódu
+  scan-sensitive-data:
+    name: 🔍 Scan for Sensitive Data
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Potřebujeme plnou historii pro git-secrets
+      
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: 📦 Install dependencies
+        run: npm ci
+      
+      - name: 🕵️ Install git-secrets
+        run: |
+          git clone https://github.com/awslabs/git-secrets.git
+          cd git-secrets
+          sudo make install
+      
+      - name: ⚙️ Configure git-secrets patterns
+        run: |
+          # Přidání vzorů pro citlivá data
+          git secrets --register-aws
+          git secrets --install
+          
+          # Vlastní vzory pro GDPR
+          git secrets --add 'email[[:space:]]*[:=][[:space:]]*["\047]?[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}["\047]?'
+          git secrets --add 'phone[[:space:]]*[:=][[:space:]]*["\047]?[+]?[0-9\s\-\(\)]{8,}["\047]?'
+          git secrets --add 'address[[:space:]]*[:=][[:space:]]*["\047]?[^"]{20,}["\047]?'
+          git secrets --add 'birth[[:space:]]*date[[:space:]]*[:=]'
+          git secrets --add 'social[[:space:]]*security'
+          git secrets --add 'credit[[:space:]]*card'
+          git secrets --add 'passport[[:space:]]*number'
+          git secrets --add 'personal[[:space:]]*id'
+          
+          # API klíče a tokeny
+          git secrets --add 'api[[:space:]]*key[[:space:]]*[:=][[:space:]]*["\047]?[a-zA-Z0-9]{20,}["\047]?'
+          git secrets --add 'secret[[:space:]]*[:=][[:space:]]*["\047]?[a-zA-Z0-9]{20,}["\047]?'
+          git secrets --add 'token[[:space:]]*[:=][[:space:]]*["\047]?[a-zA-Z0-9]{20,}["\047]?'
+      
+      - name: 🔍 Scan for secrets in history
+        run: |
+          echo "🔍 Scanning git history for sensitive data..."
+          git secrets --scan-history || echo "⚠️ Potential sensitive data found in history"
+      
+      - name: 🔍 Scan current files
+        run: |
+          echo "🔍 Scanning current files for sensitive data..."
+          git secrets --scan || echo "⚠️ Potential sensitive data found in current files"
+      
+      - name: 📝 Generate secrets scan report
+        run: |
+          echo "# 🔍 Git Secrets Scan Report" > secrets-report.md
+          echo "Generated: $(date)" >> secrets-report.md
+          echo "" >> secrets-report.md
+          echo "## Scan Results" >> secrets-report.md
+          git secrets --scan 2>&1 | head -20 >> secrets-report.md || true
+      
+      - name: 📤 Upload secrets report
+        uses: actions/upload-artifact@v4
+        with:
+          name: secrets-scan-report
+          path: secrets-report.md
+
+  # 🍪 Job 2: Kontrola cookies a tracking
+  analyze-cookies-tracking:
+    name: 🍪 Analyze Cookies & Tracking
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: 📦 Install dependencies
+        run: npm ci
+      
+      - name: 🏗️ Build project
+        run: npm run build
+      
+      - name: 🔍 Install cookie analysis tools
+        run: |
+          npm install -g lighthouse
+          npm install --save-dev @axe-core/cli
+      
+      - name: 🕵️ Analyze cookies and tracking
+        run: |
+          echo "🍪 Analyzing cookies and tracking scripts..."
+          
+          # Vytvoření skriptu pro analýzu cookies
+          cat > analyze-cookies.js << 'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          
+          function scanForCookies(dir) {
+            const results = [];
+            const files = fs.readdirSync(dir, { withFileTypes: true });
+            
+            files.forEach(file => {
+              const fullPath = path.join(dir, file.name);
+              
+              if (file.isDirectory() && !file.name.startsWith('.') && file.name !== 'node_modules') {
+                results.push(...scanForCookies(fullPath));
+              } else if (file.isFile() && (file.name.endsWith('.js') || file.name.endsWith('.ts') || file.name.endsWith('.jsx') || file.name.endsWith('.tsx'))) {
+                const content = fs.readFileSync(fullPath, 'utf8');
+                
+                // Kontrola cookies patterns
+                const cookiePatterns = [
+                  /document\.cookie/g,
+                  /setCookie/g,
+                  /getCookie/g,
+                  /localStorage\./g,
+                  /sessionStorage\./g,
+                  /google-analytics/g,
+                  /gtag\(/g,
+                  /fbq\(/g,
+                  /\_gaq/g,
+                  /dataLayer/g
+                ];
+                
+                cookiePatterns.forEach((pattern, index) => {
+                  const matches = content.match(pattern);
+                  if (matches) {
+                    results.push({
+                      file: fullPath,
+                      pattern: pattern.toString(),
+                      matches: matches.length,
+                      line: content.split('\n').findIndex(line => pattern.test(line)) + 1
+                    });
+                  }
+                });
+              }
+            });
+            
+            return results;
+          }
+          
+          const results = scanForCookies('./');
+          
+          console.log('🍪 Cookie Analysis Results:');
+          console.log(JSON.stringify(results, null, 2));
+          
+          // Uložení do souboru
+          fs.writeFileSync('cookie-analysis.json', JSON.stringify(results, null, 2));
+          
+          // Vytvoření markdown reportu
+          let report = '# 🍪 Cookie & Tracking Analysis Report\n\n';
+          report += `Generated: ${new Date().toISOString()}\n\n`;
+          
+          if (results.length === 0) {
+            report += '✅ No cookies or tracking scripts detected.\n';
+          } else {
+            report += '⚠️ Found potential cookies/tracking usage:\n\n';
+            results.forEach(result => {
+              report += `- **File:** ${result.file}\n`;
+              report += `  - Pattern: ${result.pattern}\n`;
+              report += `  - Matches: ${result.matches}\n`;
+              report += `  - Line: ${result.line}\n\n`;
+            });
+          }
+          
+          fs.writeFileSync('cookie-report.md', report);
+          EOF
+          
+          node analyze-cookies.js
+      
+      - name: 📤 Upload cookie analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: cookie-analysis
+          path: |
+            cookie-analysis.json
+            cookie-report.md
+
+  # 📋 Job 3: Kontrola GDPR dokumentace
+  validate-gdpr-docs:
+    name: 📋 Validate GDPR Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Check required GDPR files
+        run: |
+          echo "📋 Checking for required GDPR documentation..."
+          
+          REQUIRED_FILES=(
+            "PRIVACY_POLICY.md"
+            "TERMS_OF_SERVICE.md"
+            "COOKIE_POLICY.md"
+            "DATA_PROCESSING.md"
+            "docs/gdpr/privacy-policy.md"
+            "docs/legal/privacy-policy.md"
+            "public/privacy-policy.html"
+            "pages/privacy-policy.js"
+            "pages/privacy-policy.tsx"
+          )
+          
+          FOUND_FILES=()
+          MISSING_FILES=()
+          
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ -f "$file" ]; then
+              FOUND_FILES+=("$file")
+              echo "✅ Found: $file"
+            else
+              MISSING_FILES+=("$file")
+            fi
+          done
+          
+          echo "" > gdpr-docs-report.md
+          echo "# 📋 GDPR Documentation Check Report" >> gdpr-docs-report.md
+          echo "Generated: $(date)" >> gdpr-docs-report.md
+          echo "" >> gdpr-docs-report.md
+          
+          if [ ${#FOUND_FILES[@]} -eq 0 ]; then
+            echo "❌ CRITICAL: No GDPR documentation found!" >> gdpr-docs-report.md
+            echo "## ❌ Missing Files (Critical)" >> gdpr-docs-report.md
+            printf '%s\n' "${REQUIRED_FILES[@]}" | sed 's/^/- /' >> gdpr-docs-report.md
+            exit 1
+          else
+            echo "## ✅ Found GDPR Documents" >> gdpr-docs-report.md
+            printf '%s\n' "${FOUND_FILES[@]}" | sed 's/^/- /' >> gdpr-docs-report.md
+            
+            if [ ${#MISSING_FILES[@]} -gt 0 ]; then
+              echo "" >> gdpr-docs-report.md
+              echo "## ⚠️ Recommended Additional Files" >> gdpr-docs-report.md
+              printf '%s\n' "${MISSING_FILES[@]}" | sed 's/^/- /' >> gdpr-docs-report.md
+            fi
+          fi
+      
+      - name: 🔍 Validate privacy policy content
+        run: |
+          echo "🔍 Validating privacy policy content..."
+          
+          # Hledání privacy policy souborů
+          PRIVACY_FILES=$(find . -name "*privacy*" -type f \( -name "*.md" -o -name "*.html" -o -name "*.js" -o -name "*.tsx" \) | head -5)
+          
+          if [ -z "$PRIVACY_FILES" ]; then
+            echo "❌ No privacy policy files found!"
+            echo "❌ No privacy policy content found" >> gdpr-docs-report.md
+          else
+            echo "📝 Found privacy policy files:"
+            echo "$PRIVACY_FILES"
+            
+            # Kontrola klíčových sekcí v privacy policy
+            REQUIRED_SECTIONS=(
+              "data collection"
+              "personal data"
+              "cookies"
+              "third party"
+              "data retention"
+              "user rights"
+              "contact"
+              "data protection"
+              "processing"
+              "consent"
+            )
+            
+            echo "" >> gdpr-docs-report.md
+            echo "## 📝 Privacy Policy Content Analysis" >> gdpr-docs-report.md
+            
+            while IFS= read -r file; do
+              echo "Analyzing: $file" >> gdpr-docs-report.md
+              content=$(cat "$file" | tr '[:upper:]' '[:lower:]')
+              
+              for section in "${REQUIRED_SECTIONS[@]}"; do
+                if echo "$content" | grep -q "$section"; then
+                  echo "  ✅ Contains: $section" >> gdpr-docs-report.md
+                else
+                  echo "  ⚠️ Missing: $section" >> gdpr-docs-report.md
+                fi
+              done
+              echo "" >> gdpr-docs-report.md
+            done <<< "$PRIVACY_FILES"
+          fi
+      
+      - name: 📤 Upload GDPR docs report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gdpr-docs-report
+          path: gdpr-docs-report.md
+
+  # 🔒 Job 4: Bezpečnostní kontrola
+  security-audit:
+    name: 🔒 Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: 📦 Install dependencies
+        run: npm ci
+      
+      - name: 🔍 NPM Security Audit
+        run: |
+          echo "🔍 Running npm security audit..."
+          npm audit --audit-level=moderate > npm-audit.txt 2>&1 || true
+          
+          echo "# 🔒 NPM Security Audit Report" > security-report.md
+          echo "Generated: $(date)" >> security-report.md
+          echo "" >> security-report.md
+          echo "## NPM Audit Results" >> security-report.md
+          echo '```' >> security-report.md
+          cat npm-audit.txt >> security-report.md
+          echo '```' >> security-report.md
+      
+      - name: 🔍 Check for hardcoded credentials
+        run: |
+          echo "🔍 Checking for hardcoded credentials..."
+          
+          # Vzory pro hardcoded credentials
+          CREDENTIAL_PATTERNS=(
+            "password\s*=\s*['\"][^'\"]{3,}['\"]"
+            "api_key\s*=\s*['\"][^'\"]{10,}['\"]"
+            "secret\s*=\s*['\"][^'\"]{10,}['\"]"
+            "token\s*=\s*['\"][^'\"]{10,}['\"]"
+            "mongodb://.*:.*@"
+            "mysql://.*:.*@"
+            "postgres://.*:.*@"
+          )
+          
+          echo "" >> security-report.md
+          echo "## 🔍 Credential Scan Results" >> security-report.md
+          
+          FOUND_CREDENTIALS=false
+          for pattern in "${CREDENTIAL_PATTERNS[@]}"; do
+            results=$(grep -r -n -i -E "$pattern" . --exclude-dir=node_modules --exclude-dir=.git --exclude="*.log" || true)
+            if [ ! -z "$results" ]; then
+              echo "⚠️ Found potential credentials:" >> security-report.md
+              echo '```' >> security-report.md
+              echo "$results" >> security-report.md
+              echo '```' >> security-report.md
+              FOUND_CREDENTIALS=true
+            fi
+          done
+          
+          if [ "$FOUND_CREDENTIALS" = false ]; then
+            echo "✅ No hardcoded credentials found" >> security-report.md
+          fi
+      
+      - name: 📤 Upload security report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit-report
+          path: security-report.md
+
+  # 📊 Job 5: Generování finálního reportu
+  generate-final-report:
+    name: 📊 Generate Final GDPR Report
+    runs-on: ubuntu-latest
+    needs: [scan-sensitive-data, analyze-cookies-tracking, validate-gdpr-docs, security-audit]
+    if: always()
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 📥 Download all reports
+        uses: actions/download-artifact@v4
+        with:
+          path: reports/
+      
+      - name: 📊 Generate consolidated report
+        run: |
+          echo "📊 Generating consolidated GDPR compliance report..."
+          
+          cat > final-gdpr-report.md << 'EOF'
+          # 🔐 GDPR Compliance Report
+          
+          **Project:** ${{ github.repository }}  
+          **Branch:** ${{ github.ref_name }}  
+          **Commit:** ${{ github.sha }}  
+          **Generated:** $(date)  
+          **Workflow:** ${{ github.run_id }}
+          
+          ---
+          
+          ## 📋 Executive Summary
+          
+          This automated GDPR compliance check was performed on your codebase to ensure 
+          compliance with EU General Data Protection Regulation requirements.
+          
+          ### 🎯 Compliance Areas Checked:
+          - ✅ Sensitive data scanning
+          - ✅ Cookie and tracking analysis  
+          - ✅ GDPR documentation validation
+          - ✅ Security audit
+          
+          ---
+          
+          EOF
+          
+          # Přidání jednotlivých reportů
+          echo "## 🔍 Detailed Reports" >> final-gdpr-report.md
+          echo "" >> final-gdpr-report.md
+          
+          if [ -f "reports/secrets-scan-report/secrets-report.md" ]; then
+            echo "### 🕵️ Sensitive Data Scan" >> final-gdpr-report.md
+            cat reports/secrets-scan-report/secrets-report.md >> final-gdpr-report.md
+            echo "" >> final-gdpr-report.md
+          fi
+          
+          if [ -f "reports/cookie-analysis/cookie-report.md" ]; then
+            echo "### 🍪 Cookie Analysis" >> final-gdpr-report.md
+            cat reports/cookie-analysis/cookie-report.md >> final-gdpr-report.md
+            echo "" >> final-gdpr-report.md
+          fi
+          
+          if [ -f "reports/gdpr-docs-report/gdpr-docs-report.md" ]; then
+            echo "### 📋 Documentation Check" >> final-gdpr-report.md
+            cat reports/gdpr-docs-report/gdpr-docs-report.md >> final-gdpr-report.md
+            echo "" >> final-gdpr-report.md
+          fi
+          
+          if [ -f "reports/security-audit-report/security-report.md" ]; then
+            echo "### 🔒 Security Audit" >> final-gdpr-report.md
+            cat reports/security-audit-report/security-report.md >> final-gdpr-report.md
+            echo "" >> final-gdpr-report.md
+          fi
+          
+          # Doporučení a další kroky
+          cat >> final-gdpr-report.md << 'EOF'
+          
+          ---
+          
+          ## 🚀 Recommended Next Steps
+          
+          ### 📝 If Privacy Policy is Missing:
+          1. Create `PRIVACY_POLICY.md` in project root
+          2. Include all required GDPR sections
+          3. Add link to privacy policy in website footer
+          
+          ### 🍪 If Cookies Detected:
+          1. Implement cookie consent banner
+          2. Create cookie policy documentation
+          3. Ensure user can opt-out of non-essential cookies
+          
+          ### 🔒 If Security Issues Found:
+          1. Review and fix any hardcoded credentials
+          2. Update dependencies with security vulnerabilities
+          3. Implement proper secret management
+          
+          ### 📊 Ongoing Compliance:
+          - Run this workflow regularly (weekly recommended)
+          - Update privacy policy when adding new features
+          - Train team on GDPR requirements
+          - Consider adding GDPR compliance to PR checklist
+          
+          ---
+          
+          ## 📞 Need Help?
+          
+          For GDPR compliance consulting or technical implementation:
+          - 📧 Email: partnerstvi@webnamiru.site
+          - 🌐 Website: https://webnamiru.site
+          - 📱 Phone: +420 777 596 216
+          
+          **webnamiru.site** - Vaše GDPR compliance partneři na Vysočině
+          
+          EOF
+      
+      - name: 📤 Upload final report
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-gdpr-compliance-report
+          path: final-gdpr-report.md
+      
+      - name: 💬 Comment on PR (if applicable)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            try {
+              const report = fs.readFileSync('final-gdpr-report.md', 'utf8');
+              
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `## 🔐 GDPR Compliance Check Results\n\n${report.substring(0, 60000)}...`
+              });
+            } catch (error) {
+              console.log('Could not post comment:', error);
+            }
+
+  # 🚨 Job 6: Notifikace při problémech
+  notify-on-issues:
+    name: 🚨 Notify on Compliance Issues
+    runs-on: ubuntu-latest
+    needs: [scan-sensitive-data, analyze-cookies-tracking, validate-gdpr-docs, security-audit]
+    if: failure()
+    
+    steps:
+      - name: 🚨 Send notification
+        run: |
+          echo "🚨 GDPR compliance issues detected!"
+          echo "Please review the reports and fix any critical issues."
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Workflow: ${{ github.run_id }}"
+      
+      # Zde můžete přidat notifikace do Slacku, Teams, nebo emailu
+      # - name: Send Slack notification
+      #   uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: failure
+      #     text: "🚨 GDPR compliance check failed for ${{ github.repository }}"
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
