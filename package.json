@@ -1,0 +1,31 @@
+{
+  "name": "nextjs-gdpr-template",
+  "version": "1.0.0",
+  "description": "Production-ready GDPR compliance template for Next.js applications",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ishchuktaras/nextjs-gdpr-template.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ishchuktaras/nextjs-gdpr-template/issues"
+  },
+  "homepage": "https://github.com/ishchuktaras/nextjs-gdpr-template#readme",
+  "dependencies": {
+    "next": "^15.3.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.3",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "typescript": "^5.8.3"
+  }
+}
