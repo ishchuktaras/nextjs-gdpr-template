@@ -1,31 +1,52 @@
 {
-  "name": "nextjs-gdpr-template",
+  "name": "@webnamiru/nextjs-gdpr-template",
   "version": "1.0.0",
   "description": "Production-ready GDPR compliance template for Next.js applications",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "keywords": [
+    "nextjs",
+    "gdpr",
+    "privacy",
+    "cookies",
+    "consent",
+    "czech-republic",
+    "compliance",
+    "template"
+  ],
+  "author": {
+    "name": "Taras Ishchuk",
+    "email": "tech-podpora@webnamiru.site",
+    "url": "https://webnamiru.site"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ishchuktaras/nextjs-gdpr-template.git"
+    "url": "https://github.com/webnamiru/nextjs-gdpr-template.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/ishchuktaras/nextjs-gdpr-template/issues"
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest",
+    "test:compliance": "node scripts/gdpr-audit.js"
   },
-  "homepage": "https://github.com/ishchuktaras/nextjs-gdpr-template#readme",
   "dependencies": {
-    "next": "^15.3.4",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "next": "^14.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "lucide-react": "^0.263.1",
+    "js-cookie": "^3.0.5"
   },
   "devDependencies": {
-    "@types/node": "^24.0.3",
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
-    "typescript": "^5.8.3"
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "typescript": "^5.0.0",
+    "eslint": "^8.0.0",
+    "eslint-config-next": "^14.0.0",
+    "tailwindcss": "^3.3.0",
+    "autoprefixer": "^10.4.14",
+    "postcss": "^8.4.24"
   }
 }
